@@ -3,7 +3,8 @@
 (function(){
   "use strict";
 
-  var S = {mod:"accueil", sub:{}, etat:null, q:"", tri:"pertinence", resultats:null, doublons:null, renommage:null, corbeille:null, busy:false};
+  var S = {arbre:null, choix:{}, ouverts:{}, exploration:false,
+    mod:"accueil", sub:{}, etat:null, q:"", tri:"pertinence", resultats:null, doublons:null, renommage:null, corbeille:null, busy:false};
 
   /* ---------- Utilitaires ---------- */
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -29,6 +30,7 @@
   /* ---------- Icônes (traits 24 × 24, même style que la console) ---------- */
   var ICONS = {
     accueil:'<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>',
+    dossiers:'<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M8 13h8M8 16h5"/>',
     recherche:'<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5.5 5.5"/>',
     doublons:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
     propositions:'<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="m9 14 2 2 4-4"/>',
@@ -39,6 +41,7 @@
   /* ---------- Modules ---------- */
   var MODS = [
     {id:"accueil", name:"Accueil", cat:null},
+    {id:"dossiers", name:"Dossiers à archiver", cat:"Archives"},
     {id:"recherche", name:"Recherche", cat:"Archives"},
     {id:"doublons", name:"Doublons", cat:"Archives", badge:function(){ return S.etat && S.etat.doublons.groupes; }},
     {id:"propositions", name:"Propositions", cat:"Rangement",
@@ -60,6 +63,7 @@
       .catch(function(err){ toast(err.message); });
   }
   function charger(id){
+    if (id === "dossiers" && !S.arbre) chargerArbre();
     if (id === "doublons") api("/api/doublons").then(function(r){ S.doublons = r.groupes; render(); });
     if (id === "propositions"){
       api("/api/propositions/renommage").then(function(r){ S.renommage = r.propositions; render(); });
@@ -98,7 +102,7 @@
   }
   function boutonScan(){
     var en = S.etat && S.etat.scan_en_cours;
-    return '<button class="btn gold" data-act="scan"' + (en ? " disabled" : "") + '>' + (en ? spinner() + "Inventaire en cours…" : "Mettre à jour l'index") + '</button>';
+    return '<button class="btn gold" data-act="scan"' + (en ? " disabled" : "") + '>' + (en ? spinner() + "Inventaire en cours…" : "Préparer l'inventaire") + '</button>';
   }
 
   function renderTabs(m){
@@ -119,6 +123,12 @@
     if (m.id === "accueil"){
       band = bandHtml("Archiviste", "Vos archives", n(e.documents) + " documents indexés · " + taille(e.taille), boutonScan());
       main = vueAccueil(e);
+    } else if (m.id === "dossiers"){
+      var tot = totaux();
+      band = bandHtml("Inventaire", "Dossiers à archiver",
+        S.arbre ? "Sélection : " + n(tot.sf) + " fichiers · " + taille(tot.st) + " sur " + n(tot.f) + " fichiers · " + taille(tot.t) : "Choisissez les branches à inventorier",
+        S.arbre ? boutonLancer() : "");
+      main = vueDossiers();
     } else if (m.id === "recherche"){
       band = bandHtml("Archives", "Recherche", "Mots-clés, rubriques et dates dans " + n(e.documents) + " documents");
       main = vueRecherche();
@@ -135,6 +145,7 @@
     document.getElementById("band").innerHTML = band;
     var el = document.getElementById("main"), actif = document.activeElement, focusQ = actif && actif.id === "q";
     el.innerHTML = main;
+    Array.prototype.forEach.call(el.querySelectorAll('input[data-mixte]'), function(c){ c.indeterminate = true; });
     if (focusQ){ var q = document.getElementById("q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
 
@@ -149,7 +160,7 @@
     if (e.scan_en_cours) h += '<div class="callout loading" role="status">' + spinner() + '<span>Inventaire en cours : ' + n(e.documents) + ' documents lus jusqu\'ici. Cela peut prendre plusieurs minutes ; vous pouvez continuer à utiliser l\'app.</span></div>';
     if (e.erreur_scan) h += '<div class="callout">Le dernier scan a échoué : ' + esc(e.erreur_scan) + '</div>';
     if (d) h += '<p class="muted" style="margin:0">Dernier inventaire le ' + esc(quand(d.fin)) + ' : ' + n(d.vus) + ' fichiers vus, ' + n(d.ajoutes) + ' ajoutés, ' + n(d.modifies) + ' modifiés, ' + n(d.retires) + ' retirés' + (d.erreurs ? ', ' + n(d.erreurs) + ' erreurs' : '') + '.</p>';
-    if (!e.documents && !e.scan_en_cours) return h + '<div class="empty"><b>L\'index est vide.</b> Lancez « Mettre à jour l\'index » : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
+    if (!e.documents && !e.scan_en_cours) return h + '<div class="empty"><b>L\'index est vide.</b> Cliquez sur « Préparer l\'inventaire » pour choisir les dossiers à archiver, puis lancez l\'inventaire : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
     h += '<section><h2>Rubriques<small>' + n(e.rubriques.length) + '</small></h2><div class="scroll"><table><thead><tr><th>Rubrique</th><th class="num">Documents</th><th class="num">Volume</th></tr></thead><tbody>' +
       e.rubriques.map(function(r){ return '<tr><td><button class="btn sm" style="border:0;padding:0;background:none;text-align:left" data-act="rubrique" data-r="' + esc(r.rubrique) + '">' + esc(r.rubrique) + '</button></td><td class="num">' + n(r.n) + '</td><td class="num">' + taille(r.taille) + '</td></tr>'; }).join("") +
       '</tbody></table></div></section>';
@@ -229,13 +240,98 @@
       '</tbody></table></div></section>';
   }
 
+  /* ---------- Dossiers à archiver ---------- */
+  function chargerArbre(){
+    if (S.exploration) return;
+    S.exploration = true; render();
+    api("/api/arborescence").then(function(r){
+      S.arbre = r.racines; S.choix = r.choix || {}; S.exploration = false;
+      r.racines.forEach(function(x){ if (S.ouverts[x.chemin] === undefined) S.ouverts[x.chemin] = true; });
+      render();
+    }).catch(function(err){ S.exploration = false; toast(err.message); render(); });
+  }
+  /* Choix effectif : celui du dossier, sinon celui hérité du parent ; tout est inclus par défaut. */
+  function eff(noeud, herite){ return Object.prototype.hasOwnProperty.call(S.choix, noeud.chemin) ? S.choix[noeud.chemin] : herite; }
+  /* Fichiers et taille sélectionnés dans une branche, et si elle est partiellement cochée. */
+  function stats(noeud, herite){
+    var e = eff(noeud, herite), sf = 0, st = 0, ef = 0, et = 0, mixte = false;
+    noeud.enfants.forEach(function(c){
+      var x = stats(c, e); sf += x.sf; st += x.st; ef += c.fichiers; et += c.taille;
+      if (x.mixte || x.inclus !== e) mixte = true;
+    });
+    if (e){ sf += noeud.fichiers - ef; st += noeud.taille - et; }
+    return {inclus: e, sf: sf, st: st, mixte: mixte};
+  }
+  function totaux(){
+    var r = {sf:0, st:0, f:0, t:0};
+    (S.arbre || []).forEach(function(x){ var k = stats(x, true); r.sf += k.sf; r.st += k.st; r.f += x.fichiers; r.t += x.taille; });
+    return r;
+  }
+  function trouver(chemin, liste, herite){
+    for (var i = 0; i < liste.length; i++){
+      var x = liste[i], e = eff(x, herite);
+      if (x.chemin === chemin) return {noeud: x, herite: herite};
+      var r = trouver(chemin, x.enfants, e); if (r) return r;
+    }
+    return null;
+  }
+  function basculer(chemin){
+    var f = trouver(chemin, S.arbre, true); if (!f) return;
+    var st = stats(f.noeud, f.herite), cible = st.mixte ? true : !st.inclus;
+    // La branche entière suit le nouveau choix : on retire les choix de ses sous-dossiers.
+    var prefixe = chemin.replace(/[\\/]+$/, "");
+    Object.keys(S.choix).forEach(function(k){ if (k.length > prefixe.length && k.indexOf(prefixe) === 0 && /[\\/]/.test(k.charAt(prefixe.length))) delete S.choix[k]; });
+    if (cible === f.herite) delete S.choix[chemin]; else S.choix[chemin] = cible;
+    sauverChoix(); render();
+  }
+  function sauverChoix(){
+    if (S.etat && S.etat.scan_en_cours) return;
+    api("/api/selection", {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({choix: S.choix})}).catch(function(){});
+  }
+  function boutonLancer(){
+    var en = S.etat && S.etat.scan_en_cours;
+    return '<button class="btn gold" data-act="lancer"' + (en ? " disabled" : "") + '>' + (en ? spinner() + "Inventaire en cours…" : "Lancer l'inventaire") + '</button>';
+  }
+  function lignesArbre(liste, herite, niveau, out){
+    liste.forEach(function(x){
+      var s = stats(x, herite), ouvert = !!S.ouverts[x.chemin], aEnfants = x.enfants.length > 0;
+      out.push('<li class="tnode' + (s.inclus || s.mixte ? '' : ' off') + '" style="--niv:' + niveau + '">' +
+        (aEnfants ? '<button class="tcaret" data-act="noeud" data-k="' + esc(x.chemin) + '" aria-expanded="' + ouvert + '" aria-label="' + (ouvert ? "Replier " : "Déplier ") + esc(x.nom) + '">' + (ouvert ? "▾" : "▸") + '</button>' : '<span class="tcaret"></span>') +
+        '<label><input type="checkbox" data-chk="' + esc(x.chemin) + '"' + (s.inclus && !s.mixte ? " checked" : "") + (s.mixte ? ' data-mixte="1"' : "") + (S.etat && S.etat.scan_en_cours ? " disabled" : "") + '>' +
+        '<span class="tname">' + esc(x.nom) + '</span></label>' +
+        '<span class="tnum">' + n(x.fichiers) + ' fichiers</span><span class="tnum">' + taille(x.taille) + '</span>' +
+        (s.mixte ? '<span class="tsel">' + n(s.sf) + ' cochés</span>' : '<span class="tsel"></span>') + '</li>');
+      if (aEnfants && ouvert) lignesArbre(x.enfants, s.inclus, niveau + 1, out);
+    });
+    return out;
+  }
+  function vueDossiers(){
+    if (S.exploration || !S.arbre) return attente("Exploration des dossiers… (nombre de fichiers et taille, sans ouvrir les fichiers)");
+    if (!S.arbre.length) return '<div class="empty"><b>Aucun dossier à analyser.</b> Vérifiez les dossiers dans Réglages.</div>';
+    var h = '<div class="callout">Cochez les branches à archiver, puis cliquez sur « Lancer l\'inventaire ». Les branches décochées ne sont pas lues, et leurs documents sortent de l\'index. Le choix est gardé pour les prochains inventaires.</div>';
+    if (S.etat && S.etat.scan_en_cours) h += '<div class="callout loading" role="status">' + spinner() + '<span>Un inventaire est en cours : la sélection pourra être modifiée à la fin.</span></div>';
+    h += '<div class="toolbar"><button class="btn sm" data-act="tout" data-v="1">Tout cocher</button><button class="btn sm" data-act="tout" data-v="0">Tout décocher</button><span class="grow"></span><button class="btn sm" data-act="rafraichir-arbre">Actualiser</button></div>';
+    h += '<ul class="tree" aria-label="Dossiers">' + lignesArbre(S.arbre, true, 0, []).join("") + '</ul>';
+    return h;
+  }
+
   /* ---------- Événements ---------- */
   document.addEventListener("click", function(ev){
     var t = ev.target.closest("[data-act]"); if (!t || t.tagName === "FORM") return;
     var a = t.getAttribute("data-act");
     if (a === "nav") go(t.getAttribute("data-mod"));
     else if (a === "tab"){ S.sub[S.mod] = t.getAttribute("data-tab"); render(); }
-    else if (a === "scan"){
+    else if (a === "rafraichir-arbre"){ S.arbre = null; chargerArbre(); }
+    else if (a === "noeud"){ var k = t.getAttribute("data-k"); S.ouverts[k] = !S.ouverts[k]; render(); }
+    else if (a === "tout"){ S.choix = {}; if (t.getAttribute("data-v") === "0") S.arbre.forEach(function(r){ S.choix[r.chemin] = false; }); sauverChoix(); render(); }
+    else if (a === "lancer"){
+      api("/api/selection", {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({choix: S.choix})})
+        .then(function(){ return post("/api/scan"); })
+        .then(function(r){ toast(r.lance ? "Inventaire lancé sur les dossiers cochés." : r.raison); go("accueil"); chargerEtat(); })
+        .catch(function(err){ toast(err.message); });
+    }
+    else if (a === "scan"){ go("dossiers"); }
+    else if (a === "scan-direct"){
       post("/api/scan").then(function(r){ toast(r.lance ? "Inventaire lancé : l'index se met à jour." : r.raison); chargerEtat(); }).catch(function(err){ toast(err.message); });
     }
     else if (a === "rubrique"){ S.q = 'rubrique:"' + t.getAttribute("data-r").replace(/"/g, "") + '"'; S.tri = "date"; go("recherche"); chercher(); }
@@ -255,6 +351,10 @@
         render();
       }).catch(function(err){ toast(err.message); });
     }
+  });
+  document.addEventListener("change", function(ev){
+    var k = ev.target.getAttribute && ev.target.getAttribute("data-chk");
+    if (k != null) basculer(k);
   });
   document.addEventListener("submit", function(ev){
     if (ev.target.getAttribute("data-act") !== "chercher") return;

@@ -164,8 +164,8 @@ def test_interface_reste_disponible_pendant_inventaire(arbo, tmp_path, monkeypat
 
     feu = threading.Event()
 
-    def scanner_lent(conn, racines):
-        bilan = vrai_scanner(conn, racines)
+    def scanner_lent(conn, racines, choix=None):
+        bilan = vrai_scanner(conn, racines, choix)
         feu.wait(5)
         return bilan
 
@@ -180,3 +180,43 @@ def test_interface_reste_disponible_pendant_inventaire(arbo, tmp_path, monkeypat
     assert etat["scan_en_cours"] and etat["documents"] > 0
     assert client.get("/").headers["cache-control"] == "no-cache"
     feu.set()
+
+
+def test_arborescence_et_selection(arbo, tmp_path):
+    from archiviste.arborescence import est_inclus, explorer
+
+    pro = (arbo / "ESPACE PRO").resolve()
+    arbre = explorer(pro)
+    noms = [e["nom"] for e in arbre["enfants"]]
+    assert "node_modules" not in noms and "[2] Missions" in noms
+    missions = next(e for e in arbre["enfants"] if e["nom"] == "[2] Missions")
+    assert missions["fichiers"] == 2 and missions["taille"] > 0
+    assert arbre["fichiers"] == sum(e["fichiers"] for e in arbre["enfants"])
+
+    # Hérite du parent le plus proche, inclus par défaut.
+    choix = {str(pro / "[8] Fonds"): False, str(pro / "[8] Fonds" / "[1] Archives R4"): True}
+    assert est_inclus(str(pro / "[2] Missions" / "ACME"), choix)
+    assert not est_inclus(str(pro / "[8] Fonds" / "[1] Archives R4-DESKTOP-6E47TO4"), choix)
+    assert est_inclus(str(pro / "[8] Fonds" / "[1] Archives R4"), choix)
+
+    cfg = Config(racines=[pro], db_path=tmp_path / "sel.sqlite3")
+    client = TestClient(creer_app(cfg))
+    r = client.get("/api/arborescence").json()
+    assert r["racines"][0]["fichiers"] == arbre["fichiers"] and r["choix"] == {}
+    choix[str(pro / "[2] Missions")] = False
+    assert client.put("/api/selection", json={"choix": choix}).status_code == 200
+    assert client.get("/api/arborescence").json()["choix"] == choix
+
+    c = connecter(tmp_path / "sel.sqlite3")
+    scanner(c, [pro], choix)
+    relatifs = {r["relatif"] for r in c.execute("SELECT relatif FROM documents")}
+    assert not any(x.startswith("[2] Missions") for x in relatifs)
+    assert any("Archives R4/" in x or "Archives R4\\" in x for x in relatifs)
+    assert not any("DESKTOP" in x for x in relatifs)
+
+    # Une branche décochée après coup sort de l'index.
+    tout = connecter(tmp_path / "tout.sqlite3")
+    scanner(tout, [pro])
+    avant = tout.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    b = scanner(tout, [pro], {str(pro / "[3] Produit"): False})
+    assert b.retires == 1 and tout.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == avant - 1

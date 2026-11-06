@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .arborescence import enregistrer_choix, explorer, lire_choix
 from .config import Config
 from .db import connecter
 from .doublons import groupes_doublons
@@ -22,6 +23,10 @@ from .recherche import chercher
 from .scanner import scanner
 
 WEB = Path(__file__).resolve().parent.parent.parent / "web"
+
+
+class Selection(BaseModel):
+    choix: dict[str, bool]
 
 
 class Decision(BaseModel):
@@ -41,7 +46,7 @@ def creer_app(config: Config | None = None) -> FastAPI:
         # continue de lire l'index (et voit le compte progresser) pendant le scan.
         conn_scan = connecter(config.db_path)
         try:
-            bilan = scanner(conn_scan, config.racines)
+            bilan = scanner(conn_scan, config.racines, lire_choix(conn_scan))
             etat_scan["dernier"] = {**bilan.__dict__, "fin": time.time()}
             etat_scan["erreur"] = None
         except Exception as e:  # remonté à l'interface
@@ -72,6 +77,22 @@ def creer_app(config: Config | None = None) -> FastAPI:
             "erreur_scan": etat_scan["erreur"],
             "doublons": {"groupes": len(groupes), "recuperable": sum(g["recuperable"] for g in groupes)},
         }
+
+    @app.get("/api/arborescence")
+    def arborescence():
+        """Dossiers à analyser, avec nombre de fichiers et taille par branche (sans ouvrir les fichiers)."""
+        racines = [explorer(r.resolve()) for r in config.racines if r.is_dir()]
+        with verrou:
+            choix = lire_choix(conn)
+        return {"racines": racines, "choix": choix}
+
+    @app.put("/api/selection")
+    def selection(s: Selection):
+        if etat_scan["en_cours"]:
+            raise HTTPException(409, "Un inventaire est en cours : attendez la fin pour changer la sélection.")
+        with verrou:
+            enregistrer_choix(conn, s.choix)
+        return {"enregistre": len(s.choix)}
 
     @app.post("/api/scan")
     def lancer_scan():

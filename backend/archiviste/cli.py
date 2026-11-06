@@ -45,7 +45,9 @@ def main(argv: list[str] | None = None) -> int:
         if not config.racines:
             print("Renseignez ARCHIVISTE_RACINES (dossiers séparés par ;).", file=sys.stderr)
             return 2
-        b = scanner(conn, config.racines)
+        from .arborescence import lire_choix
+
+        b = scanner(conn, config.racines, lire_choix(conn))
         print(f"{b.vus} fichiers vus, {b.ajoutes} ajoutés, {b.modifies} modifiés, {b.retires} retirés, {b.erreurs} erreurs")
     elif a.commande == "chercher":
         from .recherche import chercher

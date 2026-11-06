@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .arborescence import a_descendant_inclus, est_inclus
 from .config import DOSSIERS_IGNORES, EXTENSIONS_TEXTE, TAILLE_MAX_EXTRACTION
 from .extraction import date_du_document, extraire_texte
 
@@ -41,14 +42,23 @@ def rubrique_de(relatif: Path, racine: Path) -> str:
     return racine.name
 
 
-def fichiers(racine: Path):
+def fichiers(racine: Path, choix: dict[str, bool] | None = None):
+    """Fichiers des branches sélectionnées (toutes si aucun choix)."""
+    choix = choix or {}
     for dossier, sous_dossiers, noms in os.walk(racine):
-        sous_dossiers[:] = [d for d in sous_dossiers if d not in DOSSIERS_IGNORES]
+        sous_dossiers[:] = [
+            d for d in sous_dossiers
+            if d not in DOSSIERS_IGNORES
+            and (est_inclus(os.path.join(dossier, d), choix) or a_descendant_inclus(os.path.join(dossier, d), choix))
+        ]
+        if not est_inclus(dossier, choix):
+            continue
         for nom in noms:
             yield Path(dossier) / nom
 
 
-def scanner(conn: sqlite3.Connection, racines: list[Path]) -> BilanScan:
+def scanner(conn: sqlite3.Connection, racines: list[Path], choix: dict[str, bool] | None = None) -> BilanScan:
+    """Met l'index à jour. Les fichiers des branches non sélectionnées en sortent."""
     bilan = BilanScan()
     debut = time.time()
     scan_id = conn.execute("INSERT INTO scans(debut) VALUES (?)", (debut,)).lastrowid
@@ -63,7 +73,7 @@ def scanner(conn: sqlite3.Connection, racines: list[Path]) -> BilanScan:
         if not racine.is_dir():
             bilan.erreurs += 1
             continue
-        for chemin in fichiers(racine):
+        for chemin in fichiers(racine, choix):
             try:
                 st = chemin.stat()
             except OSError:

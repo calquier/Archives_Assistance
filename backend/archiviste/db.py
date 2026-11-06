@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS decisions (
     decide_le   REAL NOT NULL
 );
 
+-- Branches choisies pour l'inventaire : {dossier: inclus (1) ou exclu (0)}.
+CREATE TABLE IF NOT EXISTS selection (
+    chemin      TEXT PRIMARY KEY,
+    inclus      INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scans (
     id          INTEGER PRIMARY KEY,
     debut       REAL NOT NULL,

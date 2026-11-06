@@ -22,11 +22,12 @@ Vérifiez ensuite les dossiers indexés dans `.env` (variable `ARCHIVISTE_RACINE
 powershell -ExecutionPolicy Bypass -File scripts\lancer.ps1
 ```
 
-L'interface s'ouvre sur http://127.0.0.1:8770. Cliquez sur « Mettre à jour l'index » pour le premier scan.
+L'interface s'ouvre sur http://127.0.0.1:8770. Cliquez sur « Préparer l'inventaire », cochez les dossiers à archiver, puis « Lancer l'inventaire ».
 
 | Module | Contenu |
 | --- | --- |
 | Accueil | Nombre de documents, volume, doublons, documents par rubrique |
+| Dossiers à archiver | Arborescence des dossiers avec nombre de fichiers et taille par branche ; on coche les branches à inventorier, puis on lance l'inventaire |
 | Recherche | Mots-clés dans le nom et le contenu (PDF, Word, Excel, PowerPoint, texte, emails .eml), filtres par rubrique, type et dates |
 | Doublons | Groupes de fichiers identiques, avec l'exemplaire à garder |
 | Propositions | Renommage selon la convention `AAAA-MM-JJ_Type_Tiers_Précision_vNN.ext`, et mise à la corbeille (copies, conflits OneDrive, versions antérieures, fichiers techniques) |
