@@ -152,3 +152,31 @@ def test_api(arbo, tmp_path):
     assert client.post(f"/api/propositions/{cle}", json={"statut": "acceptee"}).status_code == 200
     assert client.post(f"/api/propositions/{cle}", json={"statut": "n'importe"}).status_code == 400
     assert client.get("/").status_code == 200
+
+
+def test_interface_reste_disponible_pendant_inventaire(arbo, tmp_path, monkeypatch):
+    """Pendant un inventaire long, /api/etat répond et voit le compte progresser."""
+    import threading
+    import time
+
+    import archiviste.api as api_mod
+    from archiviste.scanner import scanner as vrai_scanner
+
+    feu = threading.Event()
+
+    def scanner_lent(conn, racines):
+        bilan = vrai_scanner(conn, racines)
+        feu.wait(5)
+        return bilan
+
+    monkeypatch.setattr(api_mod, "scanner", scanner_lent)
+    cfg = Config(racines=[arbo / "ESPACE PRO"], db_path=tmp_path / "lent.sqlite3")
+    client = TestClient(creer_app(cfg))
+    assert client.post("/api/scan").json()["lance"]
+    time.sleep(0.3)
+    debut = time.time()
+    etat = client.get("/api/etat").json()
+    assert time.time() - debut < 2
+    assert etat["scan_en_cours"] and etat["documents"] > 0
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    feu.set()

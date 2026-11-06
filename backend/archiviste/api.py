@@ -37,14 +37,17 @@ def creer_app(config: Config | None = None) -> FastAPI:
     app = FastAPI(title="Archiviste", version="0.1.0")
 
     def _scanner():
+        # L'inventaire a sa propre connexion : grâce au mode WAL, l'interface
+        # continue de lire l'index (et voit le compte progresser) pendant le scan.
+        conn_scan = connecter(config.db_path)
         try:
-            with verrou:
-                bilan = scanner(conn, config.racines)
+            bilan = scanner(conn_scan, config.racines)
             etat_scan["dernier"] = {**bilan.__dict__, "fin": time.time()}
             etat_scan["erreur"] = None
         except Exception as e:  # remonté à l'interface
             etat_scan["erreur"] = str(e)
         finally:
+            conn_scan.close()
             etat_scan["en_cours"] = False
 
     @app.get("/api/etat")
@@ -125,6 +128,14 @@ def creer_app(config: Config | None = None) -> FastAPI:
             opener = "open" if sys.platform == "darwin" else "xdg-open"
             subprocess.Popen([opener, str(cible.parent if dossier else cible)])
         return {"ouvert": str(cible)}
+
+    @app.middleware("http")
+    async def sans_cache(request, call_next):
+        # L'interface change avec les mises à jour : le navigateur ne la garde pas en cache.
+        reponse = await call_next(request)
+        if not request.url.path.startswith("/api/"):
+            reponse.headers["Cache-Control"] = "no-cache"
+        return reponse
 
     if WEB.is_dir():
         app.mount("/static", StaticFiles(directory=WEB), name="static")
