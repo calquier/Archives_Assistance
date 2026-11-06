@@ -12,6 +12,10 @@
   function taille(o){ if (!o) return "0 Mo"; if (o >= 1e9) return (o / 1e9).toFixed(1).replace(".", ",") + " Go"; return (o / 1e6).toFixed(1).replace(".", ",") + " Mo"; }
   function dateFr(k){ var p = String(k || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : (k || ""); }
   function quand(ts){ return ts ? new Date(ts * 1000).toLocaleString("fr-FR", {day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit"}) : "jamais"; }
+  /* Indicateur animé. Le décalage d'animation suit l'horloge pour que la rotation
+     reste fluide quand l'écran est redessiné (toutes les 1,5 s pendant un inventaire). */
+  function spinner(){ return '<span class="spinner" aria-hidden="true" style="animation-delay:-' + (Date.now() % 800) + 'ms"></span>'; }
+  function attente(texte){ return '<p class="loading" role="status">' + spinner() + esc(texte) + '</p>'; }
   var toastTimer;
   function toast(msg){ var el = document.getElementById("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function(){ el.hidden = true; }, 5000); }
 
@@ -84,7 +88,7 @@
     });
     html += '<span class="rail-sep"></span>' + MODS.filter(function(m){ return m.cat === "admin"; }).map(item).join("");
     var d = S.etat && S.etat.dernier_scan;
-    html += '<p class="rail-note">' + (S.etat && S.etat.scan_en_cours ? "Scan en cours…" : "Dernier scan : " + esc(quand(d && d.fin))) + '</p>';
+    html += '<p class="rail-note">' + (S.etat && S.etat.scan_en_cours ? spinner() + "Inventaire en cours · " + esc(n(S.etat.documents)) + " documents" : "Dernier inventaire : " + esc(quand(d && d.fin))) + '</p>';
     document.getElementById("rail").innerHTML = html;
   }
 
@@ -94,7 +98,7 @@
   }
   function boutonScan(){
     var en = S.etat && S.etat.scan_en_cours;
-    return '<button class="btn gold" data-act="scan"' + (en ? " disabled" : "") + '>' + (en ? "Scan en cours…" : "Mettre à jour l'index") + '</button>';
+    return '<button class="btn gold" data-act="scan"' + (en ? " disabled" : "") + '>' + (en ? spinner() + "Inventaire en cours…" : "Mettre à jour l'index") + '</button>';
   }
 
   function renderTabs(m){
@@ -111,7 +115,7 @@
     var m = mod(S.mod), band = "", main = "";
     var e = S.etat;
     renderRail(); renderTabs(m);
-    if (!e){ document.getElementById("main").innerHTML = '<p class="muted">Chargement…</p>'; return; }
+    if (!e){ document.getElementById("main").innerHTML = attente("Chargement…"); return; }
     if (m.id === "accueil"){
       band = bandHtml("Archiviste", "Vos archives", n(e.documents) + " documents indexés · " + taille(e.taille), boutonScan());
       main = vueAccueil(e);
@@ -142,9 +146,10 @@
       '<div class="tile"><b>' + taille(e.taille) + '</b><span>volume total</span></div>' +
       '<div class="tile" style="--edge:var(--p2)"><b>' + n(e.doublons.groupes) + '</b><span>groupes de doublons</span></div>' +
       '<div class="tile" style="--edge:var(--ok)"><b>' + taille(e.doublons.recuperable) + '</b><span>récupérables</span></div></section>';
+    if (e.scan_en_cours) h += '<div class="callout loading" role="status">' + spinner() + '<span>Inventaire en cours : ' + n(e.documents) + ' documents lus jusqu\'ici. Cela peut prendre plusieurs minutes ; vous pouvez continuer à utiliser l\'app.</span></div>';
     if (e.erreur_scan) h += '<div class="callout">Le dernier scan a échoué : ' + esc(e.erreur_scan) + '</div>';
-    if (d) h += '<p class="muted" style="margin:0">Dernier scan le ' + esc(quand(d.fin)) + ' : ' + n(d.vus) + ' fichiers vus, ' + n(d.ajoutes) + ' ajoutés, ' + n(d.modifies) + ' modifiés, ' + n(d.retires) + ' retirés' + (d.erreurs ? ', ' + n(d.erreurs) + ' erreurs' : '') + '.</p>';
-    if (!e.documents) return h + '<div class="empty"><b>L\'index est vide.</b> Lancez « Mettre à jour l\'index » : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
+    if (d) h += '<p class="muted" style="margin:0">Dernier inventaire le ' + esc(quand(d.fin)) + ' : ' + n(d.vus) + ' fichiers vus, ' + n(d.ajoutes) + ' ajoutés, ' + n(d.modifies) + ' modifiés, ' + n(d.retires) + ' retirés' + (d.erreurs ? ', ' + n(d.erreurs) + ' erreurs' : '') + '.</p>';
+    if (!e.documents && !e.scan_en_cours) return h + '<div class="empty"><b>L\'index est vide.</b> Lancez « Mettre à jour l\'index » : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
     h += '<section><h2>Rubriques<small>' + n(e.rubriques.length) + '</small></h2><div class="scroll"><table><thead><tr><th>Rubrique</th><th class="num">Documents</th><th class="num">Volume</th></tr></thead><tbody>' +
       e.rubriques.map(function(r){ return '<tr><td><button class="btn sm" style="border:0;padding:0;background:none;text-align:left" data-act="rubrique" data-r="' + esc(r.rubrique) + '">' + esc(r.rubrique) + '</button></td><td class="num">' + n(r.n) + '</td><td class="num">' + taille(r.taille) + '</td></tr>'; }).join("") +
       '</tbody></table></div></section>';
@@ -163,7 +168,7 @@
       '<select class="input" id="tri"><option value="pertinence"' + (S.tri === "pertinence" ? " selected" : "") + '>Pertinence</option><option value="date"' + (S.tri === "date" ? " selected" : "") + '>Date</option></select>' +
       '<button class="btn primary" type="submit">Chercher</button></form>' +
       '<p class="muted" style="margin:-12px 0 0;font-size:.88rem">Filtres : <code>rubrique:Missions</code> <code>ext:pdf</code> <code>depuis:2023-01-01</code> <code>jusqua:2024-12-31</code> <code>-mot</code> <code>"expression exacte"</code></p>';
-    if (S.busy) return h + '<p class="muted">Recherche…</p>';
+    if (S.busy) return h + attente("Recherche en cours…");
     if (!S.resultats) return h;
     if (!S.resultats.length) return h + '<div class="empty"><b>Aucun document trouvé.</b> Essayez moins de mots ou retirez un filtre.</div>';
     h += '<h2>Résultats<small>' + n(S.resultats.length) + (S.resultats.length >= 100 ? " premiers" : "") + '</small></h2><ul class="alist">' +
@@ -175,7 +180,7 @@
   }
 
   function vueDoublons(){
-    if (!S.doublons) return '<p class="muted">Chargement…</p>';
+    if (!S.doublons) return attente("Recherche des doublons…");
     if (!S.doublons.length) return '<div class="empty"><b>Aucun doublon.</b></div>';
     return '<p class="muted" style="margin:0">Pour chaque groupe, l\'exemplaire en gras est celui à garder ; les copies sont proposées à la corbeille dans Propositions.</p>' +
       S.doublons.map(function(g){
@@ -191,7 +196,7 @@
   var bandeauPlan = '<div class="callout">Valider une proposition l\'inscrit au plan de rangement ; l\'application des changements validés (renommage, corbeille OneDrive) arrive à l\'étape suivante, avec un journal pour revenir en arrière. Une proposition refusée n\'est plus présentée.</div>';
 
   function vueRenommage(){
-    if (!S.renommage) return '<p class="muted">Chargement…</p>';
+    if (!S.renommage) return attente("Préparation des propositions…");
     if (!S.renommage.length) return '<div class="empty"><b>Tous les fichiers suivent déjà la convention.</b></div>';
     return bandeauPlan + '<p class="muted" style="margin:0">Convention : <code>AAAA-MM-JJ_Type_Tiers_Précision_vNN.ext</code>. Une puce « date à vérifier » signale une date prise sur le fichier faute de date dans le document.</p><ul class="alist">' +
       S.renommage.map(function(p){
@@ -202,7 +207,7 @@
 
   var MOTIFS = {technique:"Fichier technique", copie:"Copie", conflit:"Conflit OneDrive", doublon:"Doublon", version:"Version antérieure"};
   function vueCorbeille(){
-    if (!S.corbeille) return '<p class="muted">Chargement…</p>';
+    if (!S.corbeille) return attente("Préparation des propositions…");
     if (!S.corbeille.length) return '<div class="empty"><b>Aucune proposition de corbeille.</b></div>';
     return bandeauPlan + '<p class="muted" style="margin:0">Les pièces d\'identité, impôts, contrats, baux, bulletins, factures, statuts et PV ne sont jamais proposés.</p><ul class="alist">' +
       S.corbeille.map(function(p){
@@ -231,7 +236,7 @@
     if (a === "nav") go(t.getAttribute("data-mod"));
     else if (a === "tab"){ S.sub[S.mod] = t.getAttribute("data-tab"); render(); }
     else if (a === "scan"){
-      post("/api/scan").then(function(r){ toast(r.lance ? "Scan lancé : l'index se met à jour." : r.raison); chargerEtat(); }).catch(function(err){ toast(err.message); });
+      post("/api/scan").then(function(r){ toast(r.lance ? "Inventaire lancé : l'index se met à jour." : r.raison); chargerEtat(); }).catch(function(err){ toast(err.message); });
     }
     else if (a === "rubrique"){ S.q = 'rubrique:"' + t.getAttribute("data-r").replace(/"/g, "") + '"'; S.tri = "date"; go("recherche"); chercher(); }
     else if (a === "ouvrir" || a === "dossier"){

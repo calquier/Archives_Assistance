@@ -135,3 +135,12 @@ code{font-family:ui-monospace, Consolas, monospace; font-size:.9em; background:v
 .group .ref{font-weight:700; overflow-wrap:anywhere}
 .group ul{margin:0; padding-left:18px; color:var(--muted); overflow-wrap:anywhere}
 .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:16px; background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:8px; max-width:min(560px, calc(100vw - 32px)); z-index:20; font-size:.95rem}
+
+/* Indicateur d'activité : tourne tant qu'un chargement ou un inventaire est en cours. */
+@keyframes tourne{to{transform:rotate(360deg)}}
+.spinner{display:inline-block; width:1em; height:1em; flex:none; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:tourne .8s linear infinite; vertical-align:-.15em}
+@media (prefers-reduced-motion: reduce){ .spinner{animation-duration:1.6s} }
+.loading{display:flex; align-items:center; gap:10px; color:var(--muted); margin:0}
+.loading .spinner{color:var(--gold)}
+.callout.loading{color:var(--ink)}
+.rail-note .spinner{color:var(--gold); margin-right:6px}
