@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     sous.add_parser("doublons", help="Liste les groupes de doublons")
     sous.add_parser("plan", help="Propositions de renommage et de corbeille")
     s = sous.add_parser("serveur", help="Lance l'interface web")
-    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--port", type=int, default=8770)
     a = p.parse_args(argv)
 
     config = Config.depuis_env()

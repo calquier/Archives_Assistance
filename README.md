@@ -22,7 +22,7 @@ Vérifiez ensuite les dossiers indexés dans `.env` (variable `ARCHIVISTE_RACINE
 powershell -ExecutionPolicy Bypass -File scripts\lancer.ps1
 ```
 
-L'interface s'ouvre sur http://127.0.0.1:8765. Cliquez sur « Mettre à jour l'index » pour le premier scan.
+L'interface s'ouvre sur http://127.0.0.1:8770. Cliquez sur « Mettre à jour l'index » pour le premier scan.
 
 | Module | Contenu |
 | --- | --- |
