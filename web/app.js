@@ -10,7 +10,8 @@
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
   var NF = new Intl.NumberFormat("fr-FR");
   function n(x){ return NF.format(x || 0); }
-  function taille(o){ if (!o) return "0 Mo"; if (o >= 1e9) return (o / 1e9).toFixed(1).replace(".", ",") + " Go"; return (o / 1e6).toFixed(1).replace(".", ",") + " Mo"; }
+  function fichiersTxt(x){ return n(x) + (x > 1 ? " fichiers" : " fichier"); }
+  function taille(o){ if (!o) return "0 Mo"; if (o < 1e6) return Math.max(1, Math.round(o / 1e3)) + " Ko"; if (o >= 1e9) return (o / 1e9).toFixed(1).replace(".", ",") + " Go"; return (o / 1e6).toFixed(1).replace(".", ",") + " Mo"; }
   function dateFr(k){ var p = String(k || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : (k || ""); }
   function quand(ts){ return ts ? new Date(ts * 1000).toLocaleString("fr-FR", {day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit"}) : "jamais"; }
   /* Indicateur animé. Le décalage d'animation suit l'horloge pour que la rotation
@@ -299,7 +300,7 @@
         (aEnfants ? '<button class="tcaret" data-act="noeud" data-k="' + esc(x.chemin) + '" aria-expanded="' + ouvert + '" aria-label="' + (ouvert ? "Replier " : "Déplier ") + esc(x.nom) + '">' + (ouvert ? "▾" : "▸") + '</button>' : '<span class="tcaret"></span>') +
         '<label><input type="checkbox" data-chk="' + esc(x.chemin) + '"' + (s.inclus && !s.mixte ? " checked" : "") + (s.mixte ? ' data-mixte="1"' : "") + (S.etat && S.etat.scan_en_cours ? " disabled" : "") + '>' +
         '<span class="tname">' + esc(x.nom) + '</span></label>' +
-        '<span class="tnum">' + n(x.fichiers) + ' fichiers</span><span class="tnum">' + taille(x.taille) + '</span>' +
+        '<span class="tnum">' + fichiersTxt(x.fichiers) + '</span><span class="tnum">' + taille(x.taille) + '</span>' +
         (s.mixte ? '<span class="tsel">' + n(s.sf) + ' cochés</span>' : '<span class="tsel"></span>') + '</li>');
       if (aEnfants && ouvert) lignesArbre(x.enfants, s.inclus, niveau + 1, out);
     });
