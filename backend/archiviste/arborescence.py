@@ -1,4 +1,4 @@
-"""Arborescence des dossiers à archiver et sélection des branches.
+"""Arborescence des dossiers à classer et sélection des branches.
 
 L'exploration ne lit que les métadonnées (nom, taille) : elle n'ouvre aucun
 fichier, et ne télécharge donc pas les fichiers OneDrive « en ligne seulement ».

@@ -42,7 +42,7 @@
   /* ---------- Modules ---------- */
   var MODS = [
     {id:"accueil", name:"Accueil", cat:null},
-    {id:"dossiers", name:"Dossiers à archiver", cat:"Archives"},
+    {id:"dossiers", name:"Dossiers à classer", cat:"Archives"},
     {id:"recherche", name:"Recherche", cat:"Archives"},
     {id:"doublons", name:"Doublons", cat:"Archives", badge:function(){ return S.etat && S.etat.doublons.groupes; }},
     {id:"propositions", name:"Propositions", cat:"Rangement",
@@ -127,7 +127,7 @@
       main = vueAccueil(e);
     } else if (m.id === "dossiers"){
       var tot = totaux();
-      band = bandHtml("Inventaire", "Dossiers à archiver",
+      band = bandHtml("Inventaire", "Dossiers à classer",
         S.arbre ? "Sélection : " + n(tot.sf) + " fichiers · " + taille(tot.st) + " sur " + n(tot.f) + " fichiers · " + taille(tot.t) : "Choisissez les branches à inventorier",
         S.arbre ? boutonLancer() : "");
       main = vueDossiers();
@@ -163,7 +163,7 @@
     if (e.scan_en_cours) h += '<div class="callout loading" role="status">' + spinner() + '<span>Inventaire en cours : ' + n(e.documents) + ' documents lus jusqu\'ici. Cela peut prendre plusieurs minutes ; vous pouvez continuer à utiliser l\'app.</span></div>';
     if (e.erreur_scan) h += '<div class="callout">Le dernier scan a échoué : ' + esc(e.erreur_scan) + '</div>';
     if (d) h += '<p class="muted" style="margin:0">Dernier inventaire le ' + esc(quand(d.fin)) + ' : ' + n(d.vus) + ' fichiers vus, ' + n(d.ajoutes) + ' ajoutés, ' + n(d.modifies) + ' modifiés, ' + n(d.retires) + ' retirés' + (d.erreurs ? ', ' + n(d.erreurs) + ' erreurs' : '') + '.</p>';
-    if (!e.documents && !e.scan_en_cours) return h + '<div class="empty"><b>L\'index est vide.</b> Cliquez sur « Préparer l\'inventaire » pour choisir les dossiers à archiver, puis lancez l\'inventaire : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
+    if (!e.documents && !e.scan_en_cours) return h + '<div class="empty"><b>L\'index est vide.</b> Cliquez sur « Préparer l\'inventaire » pour choisir les dossiers à classer, puis lancez l\'inventaire : l\'Archiviste lit vos dossiers sans rien modifier.</div>';
     h += '<section><h2>Rubriques<small>' + n(e.rubriques.length) + '</small></h2><div class="scroll"><table><thead><tr><th>Rubrique</th><th class="num">Documents</th><th class="num">Volume</th></tr></thead><tbody>' +
       e.rubriques.map(function(r){ return '<tr><td><button class="btn sm" style="border:0;padding:0;background:none;text-align:left" data-act="rubrique" data-r="' + esc(r.rubrique) + '">' + esc(r.rubrique) + '</button></td><td class="num">' + n(r.n) + '</td><td class="num">' + taille(r.taille) + '</td></tr>'; }).join("") +
       '</tbody></table></div></section>';
@@ -272,7 +272,7 @@
       '</tbody></table></div></section>';
   }
 
-  /* ---------- Dossiers à archiver ---------- */
+  /* ---------- Dossiers à classer ---------- */
   function chargerArbre(){
     if (S.exploration) return;
     S.exploration = true; render();
@@ -340,7 +340,7 @@
   function vueDossiers(){
     if (S.exploration || !S.arbre) return attente("Exploration des dossiers… (nombre de fichiers et taille, sans ouvrir les fichiers)");
     if (!S.arbre.length) return '<div class="empty"><b>Aucun dossier à analyser.</b> Vérifiez les dossiers dans Réglages.</div>';
-    var h = '<div class="callout">Cochez les branches à archiver, puis cliquez sur « Lancer l\'inventaire ». Les branches décochées ne sont pas lues, et leurs documents sortent de l\'index. Le choix est gardé pour les prochains inventaires.</div>';
+    var h = '<div class="callout">Cochez les branches à classer, puis cliquez sur « Lancer l\'inventaire ». Les branches décochées ne sont pas lues, et leurs documents sortent de l\'index. Le choix est gardé pour les prochains inventaires.</div>';
     if (S.etat && S.etat.scan_en_cours) h += '<div class="callout loading" role="status">' + spinner() + '<span>Un inventaire est en cours : la sélection pourra être modifiée à la fin.</span></div>';
     h += '<div class="toolbar"><button class="btn sm" data-act="tout" data-v="1">Tout cocher</button><button class="btn sm" data-act="tout" data-v="0">Tout décocher</button><span class="grow"></span><button class="btn sm" data-act="rafraichir-arbre">Actualiser</button></div>';
     h += '<ul class="tree" aria-label="Dossiers">' + lignesArbre(S.arbre, true, 0, []).join("") + '</ul>';

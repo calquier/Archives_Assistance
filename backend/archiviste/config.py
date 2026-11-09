@@ -3,7 +3,7 @@
 Les dossiers à indexer et l'emplacement de l'index se règlent par variables
 d'environnement (ou un fichier .env chargé par le lanceur) :
 
-- ARCHIVISTE_RACINES : chemins séparés par « ; » (ex. ESPACE PERSO;ESPACE PRO)
+- ARCHIVISTE_RACINES : chemins séparés par « ; » (ex. ESPACE PERSO;ESPACE PRO;Downloads)
 - ARCHIVISTE_DB      : chemin du fichier SQLite de l'index
 """
 

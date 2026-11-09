@@ -262,6 +262,14 @@ def test_classement(arbo, tmp_path):
     # Les rubriques d'un autre espace ne sont pas proposées.
     assert not any(p["cible"].startswith("ESPACE PRO/") for p in r["propositions"] if p["source"].startswith("ESPACE PERSO"))
 
+    # Dossier de passage (Téléchargements) : tous ses fichiers, même en sous-dossier, vers tous les espaces.
+    telech = tmp_path / "Downloads"
+    ecrire(telech / "lot" / "releve-mars.txt", "Relevé de compte bancaire de mars")
+    racines2 = racines + [telech]
+    scanner(c, racines2)
+    r2 = {p["source"]: p for p in propositions_classement(c, racines2, plan)["propositions"]}
+    assert r2["Downloads/lot/releve-mars.txt"]["cible"] == "ESPACE PERSO/[3] Banque/releve-mars.txt"
+
     decider(c, crozet["cle"], "refusee")
     assert "ESPACE PERSO/Crozet" not in {p["source"] for p in propositions_classement(c, racines, plan)["propositions"]}
     # Sans plan : aucune proposition, l'interface invite à en créer un.

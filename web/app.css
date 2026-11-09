@@ -145,7 +145,7 @@ code{font-family:ui-monospace, Consolas, monospace; font-size:.9em; background:v
 .callout.loading{color:var(--ink)}
 .rail-note .spinner{color:var(--gold); margin-right:6px}
 
-/* Arborescence des dossiers à archiver */
+/* Arborescence des dossiers à classer */
 .tree{list-style:none; margin:0; padding:0; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius)}
 .tnode{display:grid; grid-template-columns:24px minmax(0,1fr) auto auto 90px; gap:10px; align-items:center; padding:5px 12px 5px calc(12px + var(--niv) * 22px); border-bottom:1px solid var(--line)}
 .tnode:last-child{border-bottom:0}

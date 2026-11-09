@@ -7,8 +7,9 @@ projet, ou le chemin donné par ARCHIVISTE_PLAN. Voir
 
 Deux sortes de propositions, jamais appliquées sans validation :
 - dossier : déplacer un dossier existant dans sa rubrique cible ;
-- fichier : ranger un fichier isolé (à la racine d'un espace ou dans un dossier
-  au nom vague) dans la rubrique dont les mots-clés correspondent le mieux à son
+- fichier : ranger un fichier isolé (à la racine d'un espace, dans un dossier
+  au nom vague, ou n'importe où dans un dossier de passage comme Téléchargements,
+  c'est-à-dire une racine sans rubrique propre) dans la rubrique dont les mots-clés correspondent le mieux à son
   nom et à son contenu.
 """
 
@@ -137,17 +138,19 @@ def propositions_fichiers(conn: sqlite3.Connection, plan: dict, dec: dict[str, s
     if not plan["rubriques"]:
         return []
     resultat = []
+    espaces_ranges = {_norm(r["chemin"]).split("/")[0] for r in plan["rubriques"]}
     lignes = conn.execute(
         "SELECT id, chemin, racine, relatif, nom, taille, sha256, substr(texte, 1, 20000) AS texte FROM documents"
     )
     for d in map(dict, lignes):
-        if not est_isole(d["relatif"]):
-            continue
         espace = Path(d["racine"]).name
+        de_passage = espace not in espaces_ranges  # ex. Téléchargements : tout y est à classer
+        if not de_passage and not est_isole(d["relatif"]):
+            continue
         source = f"{espace}/{_norm(d['relatif'])}"
         if any(source.startswith(s + "/") or source == s for s in deja):
             continue  # couvert par une proposition de dossier
-        trouve = meilleure_rubrique(d["nom"], d["texte"] or "", plan["rubriques"], espace)
+        trouve = meilleure_rubrique(d["nom"], d["texte"] or "", plan["rubriques"], None if de_passage else espace)
         if not trouve:
             continue
         rubrique, confiance = trouve
