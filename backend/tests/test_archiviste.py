@@ -220,3 +220,49 @@ def test_arborescence_et_selection(arbo, tmp_path):
     avant = tout.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
     b = scanner(tout, [pro], {str(pro / "[3] Produit"): False})
     assert b.retires == 1 and tout.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == avant - 1
+
+
+def test_classement(arbo, tmp_path):
+    import json
+
+    from archiviste.classement import charger_plan, est_isole, propositions_classement
+
+    perso = arbo / "ESPACE PERSO"
+    ecrire(perso / "Justificatif achat FNAC.txt", "Facture d'achat, garantie deux ans")
+    ecrire(perso / "Nouveau dossier (2)" / "releve.txt", "Relevé de compte bancaire")
+    ecrire(perso / "sans rapport.txt", "rien de reconnaissable")
+    plan_f = tmp_path / "plan.json"
+    plan_f.write_text(json.dumps({
+        "dossiers": [
+            {"source": "ESPACE PERSO/Crozet", "cible": "ESPACE PERSO/[8] Loisirs/Crozet", "motif": "Passions"},
+            {"source": "ESPACE PERSO/Absent", "cible": "ESPACE PERSO/[1] X/Absent"},
+        ],
+        "rubriques": [
+            {"chemin": "ESPACE PERSO/[3] Banque", "mots_cles": ["banque", "releve", "compte bancaire"]},
+            {"chemin": "ESPACE PERSO/[9] Achats et garanties", "mots_cles": ["facture", "achat", "garantie"]},
+            {"chemin": "ESPACE PRO/[1] Administratif", "mots_cles": ["facture"]},
+        ],
+    }), encoding="utf-8")
+    plan = charger_plan(plan_f)
+    assert est_isole("x.pdf") and est_isole("Nouveau dossier (2)/a.pdf") and not est_isole("Banque/a.pdf")
+
+    c = connecter(tmp_path / "cl.sqlite3")
+    racines = [arbo / "ESPACE PRO", perso]
+    scanner(c, racines)
+    r = propositions_classement(c, racines, plan)
+    par_source = {p["source"]: p for p in r["propositions"]}
+    crozet = par_source["ESPACE PERSO/Crozet"]
+    assert crozet["portee"] == "dossier" and crozet["fichiers"] == 2 and not crozet["fusion"]
+    assert "ESPACE PERSO/Absent" not in par_source
+    fnac = par_source["ESPACE PERSO/Justificatif achat FNAC.txt"]
+    assert fnac["cible"] == "ESPACE PERSO/[9] Achats et garanties/Justificatif achat FNAC.txt"
+    assert fnac["confiance"] > 0.5
+    assert par_source["ESPACE PERSO/Nouveau dossier (2)/releve.txt"]["cible"].startswith("ESPACE PERSO/[3] Banque/")
+    assert "ESPACE PERSO/sans rapport.txt" not in par_source
+    # Les rubriques d'un autre espace ne sont pas proposées.
+    assert not any(p["cible"].startswith("ESPACE PRO/") for p in r["propositions"] if p["source"].startswith("ESPACE PERSO"))
+
+    decider(c, crozet["cle"], "refusee")
+    assert "ESPACE PERSO/Crozet" not in {p["source"] for p in propositions_classement(c, racines, plan)["propositions"]}
+    # Sans plan : aucune proposition, l'interface invite à en créer un.
+    assert propositions_classement(c, racines, {"dossiers": [], "rubriques": []})["plan_present"] is False

@@ -1,0 +1,12 @@
+{
+  "_aide": "Copiez ce fichier en plan_classement.json (non publié) et adaptez-le. Les chemins commencent par le nom du dossier indexé (ESPACE PERSO, ESPACE PRO). « dossiers » : où ranger un dossier existant. « rubriques » : rubriques cibles et mots-clés pour ranger les fichiers isolés.",
+  "dossiers": [
+    {"source": "ESPACE PERSO/Banque", "cible": "ESPACE PERSO/[3] Banque, finances et impôts/Banque", "motif": "Regroupement des finances personnelles"},
+    {"source": "ESPACE PERSO/Moto", "cible": "ESPACE PERSO/[6] Véhicules/Moto", "motif": "Regroupement des véhicules"}
+  ],
+  "rubriques": [
+    {"chemin": "ESPACE PERSO/[3] Banque, finances et impôts", "mots_cles": ["banque", "releve", "impot", "credit", "placement"]},
+    {"chemin": "ESPACE PERSO/[9] Achats et garanties", "mots_cles": ["facture", "achat", "garantie", "ticket"]},
+    {"chemin": "ESPACE PRO/[1] Administratif professionnel", "mots_cles": ["kbis", "urssaf", "statuts", "comptable"]}
+  ]
+}

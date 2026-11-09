@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .arborescence import enregistrer_choix, explorer, lire_choix
+from .classement import propositions_classement
 from .config import Config
 from .db import connecter
 from .doublons import groupes_doublons
@@ -118,6 +119,11 @@ def creer_app(config: Config | None = None) -> FastAPI:
     def renommage():
         with verrou:
             return {"propositions": propositions_renommage(conn)}
+
+    @app.get("/api/propositions/classement")
+    def classement():
+        with verrou:
+            return propositions_classement(conn, config.racines)
 
     @app.get("/api/propositions/corbeille")
     def corbeille():

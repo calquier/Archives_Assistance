@@ -46,8 +46,8 @@
     {id:"recherche", name:"Recherche", cat:"Archives"},
     {id:"doublons", name:"Doublons", cat:"Archives", badge:function(){ return S.etat && S.etat.doublons.groupes; }},
     {id:"propositions", name:"Propositions", cat:"Rangement",
-      badge:function(){ return (S.renommage ? S.renommage.length : 0) + (S.corbeille ? S.corbeille.length : 0) || null; },
-      tabs:function(){ return [["renommage", "Renommage", S.renommage ? S.renommage.length : null], ["corbeille", "Corbeille", S.corbeille ? S.corbeille.length : null]]; }},
+      badge:function(){ return (S.classement ? S.classement.propositions.length : 0) + (S.renommage ? S.renommage.length : 0) + (S.corbeille ? S.corbeille.length : 0) || null; },
+      tabs:function(){ return [["classement", "Classement", S.classement ? S.classement.propositions.length : null], ["renommage", "Renommage", S.renommage ? S.renommage.length : null], ["corbeille", "Corbeille", S.corbeille ? S.corbeille.length : null]]; }},
     {id:"reglages", name:"Réglages", cat:"admin"}
   ];
   function mod(id){ return MODS.filter(function(m){ return m.id === id; })[0] || MODS[0]; }
@@ -67,6 +67,7 @@
     if (id === "dossiers" && !S.arbre) chargerArbre();
     if (id === "doublons") api("/api/doublons").then(function(r){ S.doublons = r.groupes; render(); });
     if (id === "propositions"){
+      api("/api/propositions/classement").then(function(r){ S.classement = r; render(); });
       api("/api/propositions/renommage").then(function(r){ S.renommage = r.propositions; render(); });
       api("/api/propositions/corbeille").then(function(r){ S.corbeille = r.propositions; render(); });
     }
@@ -138,7 +139,8 @@
       main = vueDoublons();
     } else if (m.id === "propositions"){
       band = bandHtml("Rangement", "Propositions", "Rien n'est modifié tant que vous n'avez pas validé.");
-      main = (S.sub.propositions || "renommage") === "renommage" ? vueRenommage() : vueCorbeille();
+      var onglet = S.sub.propositions || "classement";
+      main = onglet === "classement" ? vueClassement() : onglet === "renommage" ? vueRenommage() : vueCorbeille();
     } else {
       band = bandHtml("Administration", "Réglages", "Dossiers indexés et syntaxe de recherche");
       main = vueReglages(e);
@@ -205,7 +207,7 @@
     if (p.statut === "acceptee") return '<span class="chip gold">Validée</span><button class="btn sm" data-act="decider" data-cle="' + p.cle + '" data-st="annuler">Annuler</button>';
     return '<button class="btn sm ok" data-act="decider" data-cle="' + p.cle + '" data-st="acceptee">Valider</button><button class="btn sm ko" data-act="decider" data-cle="' + p.cle + '" data-st="refusee">Refuser</button>';
   }
-  var bandeauPlan = '<div class="callout">Valider une proposition l\'inscrit au plan de rangement ; l\'application des changements validés (renommage, corbeille OneDrive) arrive à l\'étape suivante, avec un journal pour revenir en arrière. Une proposition refusée n\'est plus présentée.</div>';
+  var bandeauPlan = '<div class="callout">Valider une proposition l\'inscrit au plan de rangement ; l\'application des changements validés (classement, renommage, corbeille OneDrive) arrive à l\'étape suivante, avec un journal pour revenir en arrière. Une proposition refusée n\'est plus présentée.</div>';
 
   function vueRenommage(){
     if (!S.renommage) return attente("Préparation des propositions…");
@@ -215,6 +217,35 @@
         var d = p.document;
         return '<li class="arow" data-st="' + p.statut + '"><div>' + ligneDoc(d, '<span class="new">→ ' + esc(p.nouveau_nom) + '</span>' + (p.a_verifier ? ' <span class="chip warn">date à vérifier</span>' : ''), boutonsDecision(p)) + '</div></li>';
       }).join("") + '</ul>';
+  }
+
+  /* Classement : regroupé par rubrique cible (« ESPACE PERSO / [3] Banque… »). */
+  function rubriqueDe(cible){ return cible.split("/").slice(0, 2).join(" / "); }
+  function ligneClassement(p){
+    var dossier = p.portee === "dossier";
+    var titre = dossier ? p.source.split("/").pop() : p.source.split("/").pop();
+    var info = '<span class="meta">' + (dossier ? "Dossier · " : "Fichier · ") + esc(fichiersTxt(p.fichiers)) + ' · ' + taille(p.taille) +
+      (p.fusion ? ' · <span class="chip gold">fusion avec un dossier existant</span>' : '') +
+      (p.confiance < 0.7 ? ' · <span class="chip warn">à vérifier</span>' : '') + '</span>' +
+      '<span class="meta">De : ' + esc(p.source.split("/").join(" / ")) + '</span>' +
+      '<span class="new">→ ' + esc(p.cible.split("/").join(" / ")) + '</span>' +
+      (p.motif ? '<span class="meta">' + esc(p.motif) + '</span>' : '');
+    var actions = boutonsDecision(p) + (p.document ? '<button class="btn sm" data-act="ouvrir" data-id="' + p.document.id + '">Ouvrir</button>' : '');
+    return '<li class="arow" data-st="' + p.statut + '"><div><b>' + esc(titre) + '</b>' + info + '</div><div class="actions">' + actions + '</div></li>';
+  }
+  function vueClassement(){
+    var c = S.classement;
+    if (!c) return attente("Préparation des propositions de classement…");
+    if (!c.plan_present) return '<div class="empty"><b>Aucun plan de classement.</b> Le fichier plan_classement.json, qui décrit vos rubriques, n\'est pas encore installé sur ce poste.</div>';
+    if (!c.propositions.length) return '<div class="empty"><b>Tout est rangé selon le plan.</b> Aucune proposition de classement.</div>';
+    var groupes = {}, ordre = [];
+    c.propositions.forEach(function(p){ var g = rubriqueDe(p.cible); if (!groupes[g]){ groupes[g] = []; ordre.push(g); } groupes[g].push(p); });
+    ordre.sort();
+    var nd = c.propositions.filter(function(p){ return p.portee === "dossier"; }).length;
+    return bandeauPlan + '<p class="muted" style="margin:0">' + n(nd) + ' dossiers et ' + n(c.propositions.length - nd) + ' fichiers isolés à ranger, regroupés par rubrique cible. Les noms et le contenu des fichiers ne changent pas.</p>' +
+      ordre.map(function(g){
+        return '<section><h2>' + esc(g) + '<small>' + n(groupes[g].length) + '</small></h2><ul class="alist">' + groupes[g].map(ligneClassement).join("") + '</ul></section>';
+      }).join("");
   }
 
   var MOTIFS = {technique:"Fichier technique", copie:"Copie", conflit:"Conflit OneDrive", doublon:"Doublon", version:"Version antérieure"};
@@ -342,7 +373,7 @@
     else if (a === "decider"){
       var cle = t.getAttribute("data-cle"), st = t.getAttribute("data-st");
       post("/api/propositions/" + cle, {statut: st}).then(function(){
-        [S.renommage, S.corbeille].forEach(function(list){
+        [S.classement && S.classement.propositions, S.renommage, S.corbeille].forEach(function(list){
           if (!list) return;
           for (var i = 0; i < list.length; i++) if (list[i].cle === cle){
             if (st === "refusee") list.splice(i, 1); else list[i].statut = st === "annuler" ? "proposee" : st;
@@ -370,6 +401,6 @@
   /* ---------- Démarrage ---------- */
   var h = (location.hash || "").slice(1);
   if (h && mod(h).id === h) S.mod = h;
-  chargerEtat().then(function(){ charger(S.mod); api("/api/propositions/renommage").then(function(r){ S.renommage = r.propositions; render(); }); api("/api/propositions/corbeille").then(function(r){ S.corbeille = r.propositions; render(); }); });
+  chargerEtat().then(function(){ charger(S.mod); api("/api/propositions/classement").then(function(r){ S.classement = r; render(); }); api("/api/propositions/renommage").then(function(r){ S.renommage = r.propositions; render(); }); api("/api/propositions/corbeille").then(function(r){ S.corbeille = r.propositions; render(); }); });
   render();
 })();
