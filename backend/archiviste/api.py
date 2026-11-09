@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from .arborescence import enregistrer_choix, explorer, lire_choix
 from .classement import propositions_classement
-from .config import Config
+from .config import Config, noms_racines
 from .db import connecter
 from .doublons import groupes_doublons
 from .propositions import decider, propositions_corbeille, propositions_renommage
@@ -82,7 +82,13 @@ def creer_app(config: Config | None = None) -> FastAPI:
     @app.get("/api/arborescence")
     def arborescence():
         """Dossiers à analyser, avec nombre de fichiers et taille par branche (sans ouvrir les fichiers)."""
-        racines = [explorer(r.resolve()) for r in config.racines if r.is_dir()]
+        noms = noms_racines(config.racines)
+        racines = []
+        for r in config.racines:
+            if r.is_dir():
+                noeud = explorer(r.resolve())
+                noeud["nom"] = noms[str(r.resolve())]
+                racines.append(noeud)
         with verrou:
             choix = lire_choix(conn)
         return {"racines": racines, "choix": choix}

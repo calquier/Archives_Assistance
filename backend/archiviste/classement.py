@@ -5,12 +5,19 @@ contient les noms de ses dossiers) : `plan_classement.json` à la racine du
 projet, ou le chemin donné par ARCHIVISTE_PLAN. Voir
 `plan_classement.exemple.json`.
 
-Deux sortes de propositions, jamais appliquées sans validation :
+Trois sortes de propositions, jamais appliquées sans validation :
 - dossier : déplacer un dossier existant dans sa rubrique cible ;
 - fichier : ranger un fichier isolé (à la racine d'un espace, dans un dossier
   au nom vague, ou n'importe où dans un dossier de passage comme Téléchargements,
   c'est-à-dire une racine sans rubrique propre) dans la rubrique dont les mots-clés correspondent le mieux à son
-  nom et à son contenu.
+  nom et à son contenu ;
+- homonyme : quand deux racines portent le même nom (un second « ESPACE PRO »
+  ailleurs dans OneDrive), chaque dossier de la seconde est proposé à la fusion
+  dans la première, avec le décompte des doublons (même contenu déjà présent),
+  des fichiers absents et des versions différentes.
+
+Chaque proposition indique aussi ses doublons potentiels : les fichiers dont un
+exemplaire identique (même empreinte SHA-256) existe ailleurs dans l'index.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ import re
 import sqlite3
 from pathlib import Path, PurePath
 
+from .config import homonymes, noms_racines
 from .nommage import sans_accents
 from .propositions import cle, decisions
 
@@ -47,7 +55,43 @@ def _norm(p: str) -> str:
 
 
 def _racines_par_nom(racines: list[Path]) -> dict[str, Path]:
-    return {r.resolve().name: r.resolve() for r in racines}
+    return {nom: Path(chemin) for chemin, nom in noms_racines(racines).items()}
+
+
+def _index(conn: sqlite3.Connection, racines: list[Path]) -> list[tuple[str, str, int]]:
+    """[(chemin logique « ESPACE/relatif », sha256, taille)] de tout l'index."""
+    noms = noms_racines(racines)
+    return [
+        (f"{noms.get(r['racine'], Path(r['racine']).name)}/{_norm(r['relatif'])}", r["sha256"], r["taille"])
+        for r in conn.execute("SELECT racine, relatif, sha256, taille FROM documents")
+    ]
+
+
+def _sous(chemin: str, source: str) -> bool:
+    return chemin == source or chemin.startswith(source + "/")
+
+
+def ajouter_doublons(propositions: list[dict], index: list[tuple[str, str, int]]) -> None:
+    """Pour chaque proposition : fichiers dont un exemplaire identique existe hors de la source."""
+    par_sha: dict[str, list[str]] = {}
+    for chemin, sha, _ in index:
+        if sha:
+            par_sha.setdefault(sha, []).append(chemin)
+    par_source: dict[str, list[dict]] = {}
+    for p in propositions:
+        p["doublons"], p["doublons_exemples"] = 0, []
+        par_source.setdefault(p["source"], []).append(p)
+    for chemin, sha, _ in index:
+        if not sha or len(par_sha[sha]) < 2:
+            continue
+        parties = chemin.split("/")
+        for i in range(1, len(parties) + 1):
+            for p in par_source.get("/".join(parties[:i]), ()):
+                ailleurs = [c for c in par_sha[sha] if not _sous(c, p["source"])]
+                if ailleurs:
+                    p["doublons"] += 1
+                    if len(p["doublons_exemples"]) < 3:
+                        p["doublons_exemples"].append(ailleurs[0])
 
 
 def _absolu(logique: str, racines: dict[str, Path]) -> Path | None:
@@ -134,16 +178,22 @@ def est_isole(relatif: str) -> bool:
     return any(RE_DOSSIER_VAGUE.match(p) for p in parties[:-1])
 
 
-def propositions_fichiers(conn: sqlite3.Connection, plan: dict, dec: dict[str, str], deja: set[str]) -> list[dict]:
+def propositions_fichiers(
+    conn: sqlite3.Connection, plan: dict, dec: dict[str, str], deja: set[str], racines: list[Path] | None = None
+) -> list[dict]:
     if not plan["rubriques"]:
         return []
+    noms = noms_racines(racines or [])
+    copies = set(homonymes(racines or []))
     resultat = []
     espaces_ranges = {_norm(r["chemin"]).split("/")[0] for r in plan["rubriques"]}
     lignes = conn.execute(
         "SELECT id, chemin, racine, relatif, nom, taille, sha256, substr(texte, 1, 20000) AS texte FROM documents"
     )
     for d in map(dict, lignes):
-        espace = Path(d["racine"]).name
+        espace = noms.get(d["racine"], Path(d["racine"]).name)
+        if espace in copies:
+            continue  # traité par les propositions d'homonymes
         de_passage = espace not in espaces_ranges  # ex. Téléchargements : tout y est à classer
         if not de_passage and not est_isole(d["relatif"]):
             continue
@@ -176,13 +226,81 @@ def propositions_fichiers(conn: sqlite3.Connection, plan: dict, dec: dict[str, s
     return resultat
 
 
+# ------------------------------------------------------------ racines homonymes
+
+def propositions_homonymes(
+    index: list[tuple[str, str, int]], racines: list[Path], dec: dict[str, str], plan: dict | None = None
+) -> list[dict]:
+    """Chaque dossier (ou fichier) de premier niveau d'une racine homonyme -> même place dans la principale
+    (ou sa nouvelle place, si le plan déplace ce dossier)."""
+    par_nom = _racines_par_nom(racines)
+    deplaces = {_norm(r["source"]): _norm(r["cible"]) for r in (plan or {}).get("dossiers", [])}
+    par_chemin = {c: sha for c, sha, _ in index}
+    resultat = []
+    for copie, principale in homonymes(racines).items():
+        groupes: dict[str, dict] = {}
+        hors_copie = {sha for c, sha, _ in index if sha and not _sous(c, copie)}
+        for chemin, sha, taille in index:
+            if not _sous(chemin, copie):
+                continue
+            relatif = chemin[len(copie) + 1:]
+            tete = relatif.split("/")[0]
+            g = groupes.setdefault(tete, {"fichiers": 0, "taille": 0, "doublons": 0, "variantes": 0, "absents": 0,
+                                          "dossier": "/" in relatif})
+            g["fichiers"] += 1
+            g["taille"] += taille or 0
+            jumeau = par_chemin.get(f"{principale}/{relatif}")
+            if sha and sha in hors_copie:
+                g["doublons"] += 1
+            elif jumeau is not None:
+                g["variantes"] += 1
+            else:
+                g["absents"] += 1
+        for tete, g in sorted(groupes.items(), key=lambda x: x[0].lower()):
+            source = f"{copie}/{tete}"
+            cible = deplaces.get(f"{principale}/{tete}", f"{principale}/{tete}")
+            k = cle("classement", source, cible)
+            statut = dec.get(k)
+            if statut == "refusee":
+                continue
+            morceaux = [f"{g['doublons']} déjà présents ailleurs (doublons)"]
+            if g["variantes"]:
+                morceaux.append(f"{g['variantes']} dans une version différente")
+            if g["absents"]:
+                morceaux.append(f"{g['absents']} absents de « {principale} »")
+            cible_abs = _absolu(cible, par_nom)
+            if not (cible_abs and cible_abs.exists()):  # plan pas encore appliqué : l'original est encore en place
+                cible_abs = _absolu(f"{principale}/{tete}", par_nom)
+            resultat.append({
+                "cle": k,
+                "type": "classement",
+                "portee": "dossier" if g["dossier"] else "fichier",
+                "source": source,
+                "cible": cible,
+                "fusion": bool(cible_abs and cible_abs.exists()),
+                "fichiers": g["fichiers"],
+                "taille": g["taille"],
+                "motif": f"Second « {principale} » : " + ", ".join(morceaux) + ".",
+                "confiance": 0.9 if g["doublons"] == g["fichiers"] else 0.7 if not g["variantes"] else 0.6,
+                "statut": statut or "proposee",
+                "homonyme": True,
+                "variantes": g["variantes"],
+                "absents": g["absents"],
+            })
+    return resultat
+
+
 def propositions_classement(conn: sqlite3.Connection, racines: list[Path], plan: dict | None = None) -> dict:
     plan = plan if plan is not None else charger_plan()
     dec = decisions(conn)
+    index = _index(conn, racines)
     dossiers = propositions_dossiers(plan, racines, dec)
-    fichiers = propositions_fichiers(conn, plan, dec, {p["source"] for p in dossiers})
+    fichiers = propositions_fichiers(conn, plan, dec, {p["source"] for p in dossiers}, racines)
+    copies = propositions_homonymes(index, racines, dec, plan)
+    toutes = dossiers + copies + sorted(fichiers, key=lambda p: -p["confiance"])
+    ajouter_doublons(toutes, index)
     return {
         "plan_present": bool(plan["dossiers"] or plan["rubriques"]),
         "rubriques": [r["chemin"] for r in plan["rubriques"]],
-        "propositions": dossiers + sorted(fichiers, key=lambda p: -p["confiance"]),
+        "propositions": toutes,
     }

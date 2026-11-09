@@ -226,7 +226,9 @@
     var titre = dossier ? p.source.split("/").pop() : p.source.split("/").pop();
     var info = '<span class="meta">' + (dossier ? "Dossier · " : "Fichier · ") + esc(fichiersTxt(p.fichiers)) + ' · ' + taille(p.taille) +
       (p.fusion ? ' · <span class="chip gold">fusion avec un dossier existant</span>' : '') +
-      (p.confiance < 0.7 ? ' · <span class="chip warn">à vérifier</span>' : '') + '</span>' +
+      (p.confiance < 0.7 ? ' · <span class="chip warn">à vérifier</span>' : '') +
+      (p.doublons ? ' · <span class="chip warn">' + (p.portee === "fichier" && p.fichiers === 1 ? "doublon" : n(p.doublons) + (p.doublons > 1 ? " doublons" : " doublon")) + '</span>' : '') + '</span>' +
+      (p.doublons_exemples && p.doublons_exemples.length ? '<span class="meta">Même contenu déjà dans : ' + p.doublons_exemples.map(function(c){ return esc(c.split("/").join(" / ")); }).join(" ; ") + (p.doublons > p.doublons_exemples.length ? " …" : "") + '</span>' : '') +
       '<span class="meta">De : ' + esc(p.source.split("/").join(" / ")) + '</span>' +
       '<span class="new">→ ' + esc(p.cible.split("/").join(" / ")) + '</span>' +
       (p.motif ? '<span class="meta">' + esc(p.motif) + '</span>' : '');
@@ -242,7 +244,9 @@
     c.propositions.forEach(function(p){ var g = rubriqueDe(p.cible); if (!groupes[g]){ groupes[g] = []; ordre.push(g); } groupes[g].push(p); });
     ordre.sort();
     var nd = c.propositions.filter(function(p){ return p.portee === "dossier"; }).length;
-    return bandeauPlan + '<p class="muted" style="margin:0">' + n(nd) + ' dossiers et ' + n(c.propositions.length - nd) + ' fichiers isolés à ranger, regroupés par rubrique cible. Les noms et le contenu des fichiers ne changent pas.</p>' +
+    var nb = c.propositions.reduce(function(t, p){ return t + (p.doublons || 0); }, 0);
+    return bandeauPlan + '<p class="muted" style="margin:0">' + n(nd) + ' dossiers et ' + n(c.propositions.length - nd) + ' fichiers isolés à ranger, regroupés par rubrique cible. Les noms et le contenu des fichiers ne changent pas.' +
+      (nb ? ' <b>' + n(nb) + ' fichiers concernés ont un exemplaire identique ailleurs</b> (doublons potentiels, signalés en orange).' : '') + '</p>' +
       ordre.map(function(g){
         return '<section><h2>' + esc(g) + '<small>' + n(groupes[g].length) + '</small></h2><ul class="alist">' + groupes[g].map(ligneClassement).join("") + '</ul></section>';
       }).join("");

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .arborescence import a_descendant_inclus, est_inclus
-from .config import DOSSIERS_IGNORES, EXTENSIONS_TEXTE, TAILLE_MAX_EXTRACTION
+from .config import DOSSIERS_IGNORES, EXTENSIONS_TEXTE, TAILLE_MAX_EXTRACTION, noms_racines
 from .extraction import date_du_document, extraire_texte
 
 
@@ -34,12 +34,12 @@ def empreinte(chemin: Path) -> str:
     return h.hexdigest()
 
 
-def rubrique_de(relatif: Path, racine: Path) -> str:
+def rubrique_de(relatif: Path, nom_racine: str) -> str:
     """Rubrique = nom de la racine + premier niveau de dossier (ex. ESPACE PRO/[2] Missions)."""
     parties = relatif.parts
     if len(parties) > 1:
-        return f"{racine.name}/{parties[0]}"
-    return racine.name
+        return f"{nom_racine}/{parties[0]}"
+    return nom_racine
 
 
 def fichiers(racine: Path, choix: dict[str, bool] | None = None):
@@ -67,6 +67,7 @@ def scanner(conn: sqlite3.Connection, racines: list[Path], choix: dict[str, bool
         for r in conn.execute("SELECT chemin, taille, modifie_le FROM documents")
     }
     vus: set[str] = set()
+    noms = noms_racines(racines)
 
     for racine in racines:
         racine = racine.resolve()
@@ -86,7 +87,7 @@ def scanner(conn: sqlite3.Connection, racines: list[Path], choix: dict[str, bool
             if precedent == (st.st_size, st.st_mtime):
                 continue
             try:
-                _indexer(conn, chemin, racine, st)
+                _indexer(conn, chemin, racine, st, noms[str(racine)])
             except OSError:
                 bilan.erreurs += 1
                 continue
@@ -112,7 +113,7 @@ def scanner(conn: sqlite3.Connection, racines: list[Path], choix: dict[str, bool
     return bilan
 
 
-def _indexer(conn: sqlite3.Connection, chemin: Path, racine: Path, st: os.stat_result) -> None:
+def _indexer(conn: sqlite3.Connection, chemin: Path, racine: Path, st: os.stat_result, nom_racine: str) -> None:
     relatif = chemin.relative_to(racine)
     ext = chemin.suffix.lower()
     texte = ""
@@ -130,7 +131,7 @@ def _indexer(conn: sqlite3.Connection, chemin: Path, racine: Path, st: os.stat_r
         sha256=empreinte(chemin),
         date_doc=date_doc,
         date_source=source,
-        rubrique=rubrique_de(relatif, racine),
+        rubrique=rubrique_de(relatif, nom_racine),
         texte=texte,
         vu_le=time.time(),
     )

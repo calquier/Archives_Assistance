@@ -270,6 +270,24 @@ def test_classement(arbo, tmp_path):
     r2 = {p["source"]: p for p in propositions_classement(c, racines2, plan)["propositions"]}
     assert r2["Downloads/lot/releve-mars.txt"]["cible"] == "ESPACE PERSO/[3] Banque/releve-mars.txt"
 
+    # Second dossier du même nom ailleurs (OneDrive) : fusion proposée, doublons comptés.
+    autre = tmp_path / "OneDrive" / "ESPACE PERSO"
+    ecrire(autre / "Crozet" / "Albatros.jpg", b"\xff\xd8photo-albatros")
+    ecrire(autre / "Crozet" / "Petrel.jpg", b"\xff\xd8photo-petrel")
+    ecrire(autre / "Neuf" / "note.txt", "Une note introuvable ailleurs")
+    racines3 = racines2 + [autre]
+    scanner(c, racines3)
+    r3 = {p["source"]: p for p in propositions_classement(c, racines3, plan)["propositions"]}
+    copie = r3["ESPACE PERSO (OneDrive)/Crozet"]
+    assert copie["cible"] == "ESPACE PERSO/[8] Loisirs/Crozet" and copie["fusion"] and copie["homonyme"]
+    assert copie["fichiers"] == 2 and copie["doublons"] == 1 and copie["absents"] == 1
+    assert copie["doublons_exemples"][0].startswith("ESPACE PERSO/Crozet/")
+    assert r3["ESPACE PERSO (OneDrive)/Neuf"]["absents"] == 1
+    assert r3["ESPACE PERSO (OneDrive)/Neuf"]["cible"] == "ESPACE PERSO/Neuf"
+    # Le dossier du plan voit lui aussi son doublon dans la copie.
+    assert r3["ESPACE PERSO/Crozet"]["doublons"] == 2
+    assert not any(s.startswith("ESPACE PERSO (OneDrive)/Neuf/") for s in r3)
+
     decider(c, crozet["cle"], "refusee")
     assert "ESPACE PERSO/Crozet" not in {p["source"] for p in propositions_classement(c, racines, plan)["propositions"]}
     # Sans plan : aucune proposition, l'interface invite à en créer un.
